@@ -1,0 +1,26 @@
+{
+  "canisters": {
+    "freem_backend": {
+      "main": "src/freem_backend/main.mo",
+      "type": "motoko"
+    },
+    "freem_frontend": {
+      "dependencies": [
+        "freem_backend"
+      ],
+      "source": [
+        "src/freem_frontend/dist"
+      ],
+      "type": "assets",
+      "workspace": "freem_frontend"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
