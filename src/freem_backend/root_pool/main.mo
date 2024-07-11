@@ -19,6 +19,7 @@ import Types "types";
 import { now } = "mo:base/Time";
 import { setTimer; recurringTimer } = "mo:base/Timer";
 
+/*
 actor Reminder {
 
   let solarYearSeconds = 356_925_216;
@@ -33,7 +34,7 @@ actor Reminder {
       ignore recurringTimer<system>(#seconds solarYearSeconds, remind);
       await remind();
   });
-}
+}*/
 
 actor {
 
@@ -59,10 +60,11 @@ actor {
         stable let status : PromiseStatus = #Ready; 
 
         var incentives : Buffer.Buffer<Incentive> = Buffer.Buffer<Incentive>(2); 
-        //incentives.add("#1 : Do 10 pushups and get 10 points");
-        //incentives.add("#2 : Do 30 pushups in a row and get 50 points");
-        //incentives.add("#3 : DO 15 pushups on one hand and get 60 points");
-        //incentives.add("#4 : Do 100 pushups within 3min and get 80 points");   
+        incentives.add({id = 1; description = "#1 : Do 10 pushups and get 10 points"; rewardTokenName = "$Fitness"; rewardAmount = 10} );
+        incentives.add({id = 2; description = "#2 : Do 30 pushups in a row and get 50 points"; rewardTokenName = "$Fitness"; rewardAmount = 50} );
+        incentives.add({id = 3; description = "#3 : DO 15 pushups on one hand and get 60 points"; rewardTokenName = "$Fitness"; rewardAmount = 60} );
+        incentives.add({id = 4; description = "#4 : Do 100 pushups within 3min and get 80 points"; rewardTokenName = "$Fitness"; rewardAmount = 80} );   
+
 
         let logo : Text = "";
 
@@ -78,15 +80,12 @@ actor {
         var nextProposalId : ProposalId = 0;
         let proposals = HashMap.HashMap<ProposalId, Proposal>(0, Nat.equal, Hash.hash );
         
+        /*
         let tokenCanister = actor("jaamb-mqaaa-aaaaj-qa3ka-cai") : actor { // actor("jaamb-mqaaa-aaaaj-qa3ka-cai") : actor {
                 mint : shared (owner : Principal, amount : Nat) -> async Result<(), Text>;
                 burn : shared (owner : Principal, amount : Nat) -> async Result<(), Text>;
                 balanceOf : shared (owner : Principal) -> async Nat;
-        };
-
-        let webpageCanister = actor("6mce5-laaaa-aaaab-qacsq-cai") : actor {
-                setManifesto : shared (newManifesto : Text) -> async Result<(), Text>;
-        };
+        };*/
 
         // Returns the name of the DAO
         public shared query func getName() : async Text {
@@ -136,16 +135,18 @@ actor {
                 case(null){
                         members.put(caller, member);
                         // TODO : mint 10 MBT for new member
-                        let mintResult = await tokenCanister.mint(caller, 10); 
+                        //let mintResult = await tokenCanister.mint(caller, 10); 
 
                         // TODO : Get a deposit address for the new member and store it for future withdrawal
-                        return mintResult;
+                        //return mintResult;
+                        return Ok();
                 };
                 case(? optFoundMember){ return #err("Member already exists"); };
                 }
         };
 
         
+        /*
         // Code to get AccountID from external ID
         public shared(msg) func getDepositAddress(): async Blob {
                 Account.accountIdentifier(Principal.fromActor(this), Account.principalToSubaccount(msg.caller));
@@ -155,12 +156,13 @@ actor {
         // Code to get AccountID from external ID
         public func getDepositAddress(caller : Principal): async Blob {
                 Account.accountIdentifier(Principal.fromActor(this), Account.principalToSubaccount(caller));
-        };
+        };*/
 
         // Pool Address 
         // Account.accountIdentifier(Principal.fromActor(this), Account.defaultSubaccount());
 
-
+        /*
+        // Claim bounty when Pool has arrived the distribution time
         public shared(caller) func claimBounty(): async Blob {
                 // TODO : Verify member is registered and holds assets, then get his account_id
                 let account_id : Blob = getDepositAddress(caller)
@@ -169,8 +171,8 @@ actor {
                 let amount : Nat32 = 0;
 
                 withdrawIcp(caller, amount, account_id);
-        }
-
+        }*/
+        /*
         private func withdrawIcp(caller: Principal, amount: Nat, account_id: Blob) : async T.WithdrawReceipt {
                 Debug.print("Withdraw...");
 
@@ -201,7 +203,7 @@ actor {
                     case _ {};
                 };
                 #Ok(amount)
-    };
+    };*/
 
         // Get the member with the given principal
         // Returns an error if the member does not exist
@@ -241,8 +243,8 @@ actor {
         };
 
 
-
-        // Graduate the student with the given principal
+        /*
+        // PayOut when the action has been confirmed. promote challenger to StakeHolder
         // Returns an error if the student does not exist or is not a student
         // Returns an error if the caller is not a mentor
         public shared ({ caller }) func payOut(incentive : Incentive) : async Result<(), Text> {
@@ -264,7 +266,7 @@ actor {
                     return #ok();
             };
             }
-        };
+        };*/
 
         // Create a new proposal and returns its id
         // Returns an error if the caller is not a mentor or doesn't own at least 1 MBC token
@@ -279,9 +281,10 @@ actor {
                 case(null) { return #err("The caller is not a member"); };
                 case(? member) {
                         //let balance = await tokenCanister.balanceOf(caller);
+                        /* // TODO : We need to burn at least one token to avoid proposal spamming among challengers
                         if ( Result.isErr( await tokenCanister.burn(caller, 1) ) ) {
                                 return #err("The caller does not have enough tokens to create a proposal");
-                        };
+                        };*/
                         // Create the proposal and burn the tokens
                         let proposal : Proposal = {
                                 id = nextProposalId;
@@ -343,7 +346,7 @@ actor {
                                 if (_hasVoted(proposal, caller)) {
                                 return #err("The caller has already voted on this proposal");
                                 };
-                                let balance = await tokenCanister.balanceOf(caller);
+                                let balance = 1; // await tokenCanister.balanceOf(caller); // TODO : Consider user's token balance as part of voting power?
                                 let multiplierVote = switch (vote.yesOrNo) {
                                         case (true) { 1 };
                                         case (false) { -1 };
