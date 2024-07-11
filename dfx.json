@@ -4,10 +4,6 @@
       "main": "src/freem_backend/main.mo",
       "type": "motoko"
     },
-    "promise_manager": {
-      "main": "src/freem_backend/dao/main.mo",
-      "type": "motoko"
-    },
     "freem_frontend": {
       "entry_point": "src/NFID_frontend/src/index.html",
       "dependencies": [

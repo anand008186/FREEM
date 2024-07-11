@@ -19,21 +19,21 @@ import Types "types";
 import { now } = "mo:base/Time";
 import { setTimer; recurringTimer } = "mo:base/Timer";
 
-actor Reminder {
+// actor Reminder {
 
-  let solarYearSeconds = 356_925_216;
+//   let solarYearSeconds = 356_925_216;
 
-  private func remind() : async () {
-    status = #Ended
-    print("End of the challenge!");
-  };
+//   private func remind() : async () {
+//     status = #Ended
+//     print("End of the challenge!");
+//   };
 
-  ignore setTimer<system>(#seconds (solarYearSeconds - abs(now() / 1_000_000_000) % solarYearSeconds),
-    func () : async () {
-      ignore recurringTimer<system>(#seconds solarYearSeconds, remind);
-      await remind();
-  });
-}
+//   ignore setTimer<system>(#seconds (solarYearSeconds - abs(now() / 1_000_000_000) % solarYearSeconds),
+//     func () : async () {
+//       ignore recurringTimer<system>(#seconds solarYearSeconds, remind);
+//       await remind();
+//   });
+// }
 
 actor {
 
@@ -161,13 +161,13 @@ actor {
 
         public shared(caller) func claimBounty(): async Blob {
                 // TODO : Verify member is registered and holds assets, then get his account_id
-                let account_id : Blob = getDepositAddress(caller)
+                let account_id : Blob = getDepositAddress(caller);
 
                 // TODO : Calculate amount according to pool distribution result
                 let amount : Nat32 = 0;
 
                 withdrawIcp(caller, amount, account_id);
-        }
+        };
 
         private func withdrawIcp(caller: Principal, amount: Nat, account_id: Blob) : async T.WithdrawReceipt {
                 Debug.print("Withdraw...");
@@ -244,7 +244,7 @@ actor {
         // Returns an error if the student does not exist or is not a student
         // Returns an error if the caller is not a mentor
         public shared ({ caller }) func stake(amount : Nat32) : async Result<(), Text> {
-            if ( !(status == #Open || status == #Running) ) { return #err("Challenge is over. Cannot stake anymore"); }    
+            if ( not(status == #Open or status == #Running) ) { return #err("Challenge is over. Cannot stake anymore"); }  ;  
                 
             switch( members.get(caller) ) {
             // Check if n is null
