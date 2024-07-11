@@ -19,7 +19,7 @@ type Challenge = Types.Challenge;
 type Pool = Types.Pool;
 
 type ChallengeArg = Types.ChallengeArg;
-
+type Result<A, B> = Result.Result<A, B>;
 // Token canister(ICRC2) types
 type ICRCTransferError = icrcTypes.ICRCTransferError;
 type ICRCTokenTxReceipt = icrcTypes.ICRCTokenTxReceipt;
@@ -36,8 +36,12 @@ type ICRC2Allowance = icrcTypes.ICRC2Allowance;
 // List of challenges
 var challenges: [Challenge] = [];
 
+var pools: [Pool] = []; // List of pools
+
 //token registration when new pool is created
 var tokens : [Token] = [];
+
+let primaryPoolMembers : HashMap.HashMap<Principal,Member> = HashMap.HashMap<Principal,Member>(0,Principal.equal,Principal.hash);
 
 // token balances
 let balances : HashMap.HashMap<Principal,HashMap.HashMap<Text,Nat>> = HashMap.HashMap<Principal, HashMap.HashMap<Text,Nat>>(0,Principal.equal,Principal.hash);
@@ -62,7 +66,7 @@ public shared({caller}) func createChallenge(challengeArg: ChallengeArg): async 
     };
     let _members = HashMap.HashMap<Principal,Member>(0,Principal.equal,Principal.hash);
     _members.put(caller,newMember);
-
+    primaryPoolMembers.put(caller,newMember);
     // create a new challenge
     let newChallenge: Challenge = {
         id = challengeId;
@@ -110,14 +114,97 @@ public shared({caller}) func earnValueTokens(member: Principal, amount: Nat): as
 };
 
 // Function to transfer $VALUE tokens between members
-public shared({caller}) func transferValueTokens( to: Principal, amount:Nat , tokenName:Text): async () {
+// public shared({caller}) func transferValueTokens( to: Principal, amount:Nat , tokenName:Text): async Result<(),Text> {
    
+
+//   //check if the tokenName is primary incentive token
+//   let _challenge = Array.find(challenges, func(t:Challenge): Bool { t.incentiveTokenName == tokenName });
+//   //if token is not found in primary challenge, search in pools
+//   switch(_challenge){
+//     case(null){
+//        let _pool= Array.find(pools, func(t:Pool) : Bool { t.incentiveTokenName == tokenName });
+//      switch(_pool){
+//        case(null){
+//          return #err("Token not found in the challenge or pool");
+//        };
+//        case(?pool){
+//          let _from = Array.find(_pool.members, func(t:HashMap.HashMap<Principal,Member>) { t.get(caller) });
+//          let _to = Array.find(_pool.members, func(t:HashMap.HashMap<Principal,Member>) { t.get(to) });
+//          if((_from == null) or (_to == null)){
+//            return #err("Caller or recipient not found in the pool");
+//          };
+//          let _balance = balances.get(caller).get(tokenName);
+//          if(_balance < amount){
+//            return #err("Insufficient balance");
+//          };
+//          balances.get(caller).put(tokenName,_balance - amount);
+//          balances.get(to).put(tokenName,balances.get(to).get(tokenName) + amount);
+//          return #ok(());
+//        };
+//      };
    
-   
+//     };
+//     case(?_challenge){
+//       let _from = Array.find(_challenge.members, func(t:HashMap.HashMap<Principal,Member>) { t.get(caller) });
+//       let _to = Array.find(_challenge.members, func(t:HashMap.HashMap<Principal,Member>) :Bool { t.get(to) });
+//       if((_from == null) or (_to == null)){
+//         return #err("Caller or recipient not found in the challenge");
+//       };
+//       let _balance = balances.get(caller).get(tokenName);
+//       if(_balance < amount){
+//         return #err("Insufficient balance");
+//       };
+//       balances.get(caller).put(tokenName,_balance - amount);
+//       balances.get(to).put(tokenName,balances.get(to).get(tokenName) + amount);
+//       return #ok(());
+
+//     };
+
+// };
+// };
+
+// Function to create a new pool
+public shared({caller}) func createPool( poolName: Text, stake: Nat,stakeTokenName:Text, incentiveTokenName:Text): async () {
+    // Implementation to create a new pool within a challenge
+    // Validate input
+    assert(stakeTokenName != "");
+    assert(incentiveTokenName != "");
+
+    // check whether the caller is a member of the primary challenge
+    switch(primaryPoolMembers.get(caller)){
+        case (?member){
+            // make the creator a member of the pool
+            let newMember: Member = {
+                name = member.name;
+                stakedAmount = stake;
+            };
+            let _members = HashMap.HashMap<Principal,Member>(0,Principal.equal,Principal.hash);
+            _members.put(caller,newMember);
+            // create a new pool
+            let newPool: Pool = {
+                id = challengeId;
+                name = poolName;
+                creator = newMember;
+                stake = stake;
+                totalStaked = stake;
+                members = _members;
+                stakeTokenName = stakeTokenName;
+                incentiveTokenName = incentiveTokenName;
+            };
+            // add the pool to the list
+            let buffer = Buffer.fromArray<Pool>(pools);
+            buffer.add(newPool);
+            pools := Buffer.toArray<Pool>(buffer);
+        };
+        case (null){
+            // Caller is not a member of the primary challenge
+            return;
+        };
+    };
+
+
   
-
 };
-
 
 // public shared(msg) func transferToken(challengeId: Nat, sender: Principal, recipient: Principal, tokenName: Text, amount: Nat) : async Bool {
 //     // Attempt to find the challenge directly among primary challenges

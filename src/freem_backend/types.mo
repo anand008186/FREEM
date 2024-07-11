@@ -52,6 +52,6 @@ public type Pool = {
   members: HashMap.HashMap<Principal,Member>; // Members who have joined the pool and their staked tokens
   stakeTokenName: Text; // Type of token required for staking (e.g., $Fitness)
   incentiveTokenName: Text; // Type of token given as incentives (e.g., $Burpee)
-  incentives: [Incentive]; // List of incentives available in the pool
+
 };
 }
