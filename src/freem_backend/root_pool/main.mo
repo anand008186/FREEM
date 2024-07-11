@@ -39,11 +39,14 @@ actor {
 
         type Result<A, B> = Result.Result<A, B>;
         type Member = Types.Member;
+        type Incentive = Types.Incentive;
+        type Challenge = Types.Challenge;
         type ProposalContent = Types.ProposalContent;
         type ProposalId = Types.ProposalId;
         type Proposal = Types.Proposal;
         type Role = Types.Role;
         type Vote = Types.Vote;
+        type PromiseStatus = Types.PromiseStatus;
         type DAOStats = Types.DAOStats;
         type HttpRequest = Types.HttpRequest;
         type HttpResponse = Types.HttpResponse;
@@ -53,21 +56,20 @@ actor {
         
         stable var manifesto : Text = "This is the incentive pool for people taking on pushup challenges";
         stable let name = "Promise";
-        stable let status : PromiseStatus = #Open; 
+        stable let status : PromiseStatus = #Ready; 
 
-        var incentives : Buffer.Buffer<Text> = Buffer.Buffer<Text>(2); 
-        incentives.add("#1 : Do 10 pushups and get 10 points");
-        incentives.add("#2 : Do 30 pushups in a row and get 50 points");
-        incentives.add("#3 : DO 15 pushups on one hand and get 60 points");
-        incentives.add("#4 : Do 100 pushups within 3min and get 80 points");
-        
+        var incentives : Buffer.Buffer<Incentive> = Buffer.Buffer<Incentive>(2); 
+        //incentives.add("#1 : Do 10 pushups and get 10 points");
+        //incentives.add("#2 : Do 30 pushups in a row and get 50 points");
+        //incentives.add("#3 : DO 15 pushups on one hand and get 60 points");
+        //incentives.add("#4 : Do 100 pushups within 3min and get 80 points");   
 
         let logo : Text = "";
 
         let members = HashMap.HashMap<Principal, Types.Member>(1, Principal.equal, Principal.hash);
 
         // Add Initial mentor for DAO
-        let initialAdmin : Types.Member = { 
+        let initialAdmin : Types.Member = {
                                                 name = "motoko_bootcamp"; 
                                                 role = #Admin; 
                                            };
@@ -114,8 +116,8 @@ actor {
         };
 
         // Returns the incentives of the DAO
-        public shared query func getIncentives() : async [Text] {
-                return Buffer.toArray<Text>(incentives);
+        public shared query func getIncentives() : async [Incentive] {
+                return Buffer.toArray<Incentive>(incentives);
         };
 
         // Register a new member in the DAO with the given name and principal of the caller
@@ -243,14 +245,14 @@ actor {
         // Graduate the student with the given principal
         // Returns an error if the student does not exist or is not a student
         // Returns an error if the caller is not a mentor
-        public shared ({ caller }) func stake(amount : Nat32) : async Result<(), Text> {
+        public shared ({ caller }) func payOut(incentive : Incentive) : async Result<(), Text> {
             if ( !(status == #Open || status == #Running) ) { return #err("Challenge is over. Cannot stake anymore"); }    
                 
             switch( members.get(caller) ) {
             // Check if n is null
             case(null){ return #err("Member not found"); };
             case(? optFoundMember){
-                    // TODO : get sub account_id and transfer tokens to the BlackHole canister pool 
+                    // TODO : get sub account_id and transfer obtained tokens to the users token account 
 
                     if(optFoundMember.role == #Challenger) {
                             let activeMember : Member = { 
@@ -267,14 +269,14 @@ actor {
         // Create a new proposal and returns its id
         // Returns an error if the caller is not a mentor or doesn't own at least 1 MBC token
         public shared ({ caller }) func createProposal(content : ProposalContent) : async Result<ProposalId, Text> {
-                let resultVerifiedMember : Result<Member, Text> = _verifyMemberRole(caller, #Admin);
+                let resultVerifiedMember : Result<Member, Text> = _verifyMemberRole(caller, #AssetHolder);
                 //assertOk( resultVerifiedMember );
                 if( Result.isErr(resultVerifiedMember) ) {
-                        return #err("The caller is not a Admin - cannot create a proposal");
+                        return #err("The caller is not an AssetHolder - cannot create a proposal");
                 };
 
                 switch( members.get(caller) ) {
-                case(null) { return #err("The caller does not have enough tokens to create a proposal"); };
+                case(null) { return #err("The caller is not a member"); };
                 case(? member) {
                         //let balance = await tokenCanister.balanceOf(caller);
                         if ( Result.isErr( await tokenCanister.burn(caller, 1) ) ) {

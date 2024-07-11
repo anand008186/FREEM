@@ -4,7 +4,7 @@ import Nat "mo:base/Nat";
 module {
 
     public type PromiseStatus = {
-        #Open;
+        #Ready;
         #Running;
         #Ended;
         #Distribution;
@@ -13,7 +13,7 @@ module {
     public type DAOStats = {
         name : Text;
         manifesto : Text;
-        goals : [Text];
+        incentives : [Incentive];
         members : [Text];
         logo : Text;
         numberOfMembers : Nat;
@@ -30,11 +30,30 @@ module {
         role : Role;
     };
 
+    public type Incentive = {
+      id: Nat;
+      description: Text;
+      rewardTokenName: Text; // Name of the token given as a reward
+      rewardAmount: Nat; // Amount of tokens given as a reward
+    };
+
+    public type Challenge = {
+      id: Nat;
+      name: Text;
+      description: Text;
+      stakeAmount: Float; // Minimum stake amount required to join the challenge
+      startDate: Text;
+      endDate: Text;
+      participants: [UserToken]; // Tracks tokens for each participant
+      totalStakedAmount: Nat; // Total amount of tokens currently staked in the challenge
+      incentives: [Incentive]; // List of incentives available in the challenge
+    };
+
     public type ProposalId = Nat;
 
     public type ProposalContent = {
-        #ChangeManifesto : Text; // Change the manifesto to the provided text
-        #AddIncentive : Text;
+        #ChangeManifesto : Text; // Change the challenge manifesto to the provided text
+        #AddIncentive : Incentive;
         #AddAdmin : Principal; // Upgrade the member to a mentor with the provided principal
     };
 
@@ -52,6 +71,7 @@ module {
 
     public type Proposal = {
         id : ProposalId; // The unique identifier of the proposal
+        challengeId: Nat;
         content : ProposalContent; // The content of the proposal
         creator : Principal; // The member who created the proposal
         created : Time.Time; // The time the proposal was created
