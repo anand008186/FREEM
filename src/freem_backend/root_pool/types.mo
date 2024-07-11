@@ -1,10 +1,63 @@
 import Principal "mo:base/Principal";
 import Time "mo:base/Time";
 import Nat "mo:base/Nat";
+import Text "mo:base/Text";
+import HashMap "mo:base/HashMap";
 module {
 
+public type ChallengeId = Nat;
+
+public type Token = {
+  name: Text;
+  challengeId: Nat; // Associate the token with a specific challenge
+};
+
+public type Member = {
+  name: Text;
+  stakedAmount: Nat;
+};
+public type Incentive = {
+  description: Text;
+  rewardAmount: Nat; // Amount of tokens given as a reward
+};
+
+public type Challenge = {
+  id: ChallengeId;
+  name: Text;
+  creator: Member;
+  description: Text;
+  memberStakeAmount: Float;
+  members: HashMap.HashMap<Principal,Member>; // Minimum stake amount required to join the challenge
+  startDate: Time.Time;
+  endDate: Time.Time;
+  totalStakedAmount: Nat;
+  incentiveTokenName: Text;        // Total amount of tokens currently staked in the challenge
+};
+
+public type ChallengeArg = {
+  name: Text;
+  description: Text;
+  memberStakeAmount: Float;
+  CreatorName: Text;
+  CreatorStakedAmount: Nat;
+  incentiveTokenName: Text;
+  
+};
+
+public type Pool = {
+  id: ChallengeId;
+  name: Text;
+  creator: Member;
+  stake: Nat; // Minimum stake amount in $Fitness tokens required to join the pool
+  totalStaked: Nat; // Total amount of tokens currently staked in the pool
+  members: HashMap.HashMap<Principal,Member>; // Members who have joined the pool and their staked tokens
+  stakeTokenName: Text; // Type of token required for staking (e.g., $Fitness)
+  incentiveTokenName: Text; // Type of token given as incentives (e.g., $Burpee)
+
+};
+
     public type PromiseStatus = {
-        #Open;
+        #Ready;
         #Running;
         #Ended;
         #Distribution;
@@ -13,9 +66,8 @@ module {
     public type DAOStats = {
         name : Text;
         manifesto : Text;
-        goals : [Text];
+        incentives : [Incentive];
         members : [Text];
-        logo : Text;
         numberOfMembers : Nat;
     };
 
@@ -25,16 +77,11 @@ module {
         #Admin;
     };
 
-    public type Member = {
-        name : Text;
-        role : Role;
-    };
 
     public type ProposalId = Nat;
 
     public type ProposalContent = {
-        #ChangeManifesto : Text; // Change the manifesto to the provided text
-        #AddIncentive : Text;
+        #AddIncentive : Incentive;
         #AddAdmin : Principal; // Upgrade the member to a mentor with the provided principal
     };
 
@@ -52,6 +99,7 @@ module {
 
     public type Proposal = {
         id : ProposalId; // The unique identifier of the proposal
+        challengeId: Nat;
         content : ProposalContent; // The content of the proposal
         creator : Principal; // The member who created the proposal
         created : Time.Time; // The time the proposal was created

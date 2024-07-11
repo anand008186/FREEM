@@ -1,11 +1,7 @@
 {
   "canisters": {
     "freem_backend": {
-      "main": "src/freem_backend/main.mo",
-      "type": "motoko"
-    },
-    "promise_manager": {
-      "main": "src/freem_backend/dao/main.mo",
+      "main": "src/freem_backend/root_pool/main.mo",
       "type": "motoko"
     },
     "freem_frontend": {

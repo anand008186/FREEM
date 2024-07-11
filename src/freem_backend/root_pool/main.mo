@@ -2,38 +2,16 @@ import Result "mo:base/Result";
 import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import Nat "mo:base/Nat";
-import Nat64 "mo:base/Nat64";
 import Bool "mo:base/Bool";
 import Text "mo:base/Text";
 import Buffer "mo:base/Buffer";
 import Iter "mo:base/Iter";
-import Debug "mo:base/Debug";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Int "mo:base/Int";
 import Hash "mo:base/Hash";
-import Types "types";
-//import tokenCanister "canister:promise_token";
-//import webpageCanister "canister:promise_webpage";
 
-import { now } = "mo:base/Time";
-import { setTimer; recurringTimer } = "mo:base/Timer";
-
-actor Reminder {
-
-  let solarYearSeconds = 356_925_216;
-
-  private func remind() : async () {
-    status = #Ended
-    print("End of the challenge!");
-  };
-
-  ignore setTimer<system>(#seconds (solarYearSeconds - abs(now() / 1_000_000_000) % solarYearSeconds),
-    func () : async () {
-      ignore recurringTimer<system>(#seconds solarYearSeconds, remind);
-      await remind();
-  });
-}
+import Types "./types";
 
 actor {
 
@@ -47,44 +25,52 @@ actor {
         type DAOStats = Types.DAOStats;
         type HttpRequest = Types.HttpRequest;
         type HttpResponse = Types.HttpResponse;
+        type ChallengeId = Types.ChallengeId;
+        type Token = Types.Token;
+        type Incentive = Types.Incentive;
+        type Challenge = Types.Challenge;
+        type Pool = Types.Pool;
+        type ChallengeArg = Types.ChallengeArg;
 
         // The principal of the Webpage canister associated with this DAO canister (needs to be updated with the ID of your Webpage canister)
         stable let canisterIdWebpage : Principal = Principal.fromText("u72sn-7aaaa-aaaab-qadkq-cai");
-        
+
         stable var manifesto : Text = "This is the incentive pool for people taking on pushup challenges";
         stable let name = "Promise";
-        stable let status : PromiseStatus = #Open; 
 
-        var incentives : Buffer.Buffer<Text> = Buffer.Buffer<Text>(2); 
-        incentives.add("#1 : Do 10 pushups and get 10 points");
-        incentives.add("#2 : Do 30 pushups in a row and get 50 points");
-        incentives.add("#3 : DO 15 pushups on one hand and get 60 points");
-        incentives.add("#4 : Do 100 pushups within 3min and get 80 points");
-        
+        var incentives : Buffer.Buffer<Incentive> = Buffer.Buffer<Incentive>(2);
+        // List of challenges
+        var challenges : [Challenge] = [];
 
-        let logo : Text = "";
+        var pools : [Pool] = []; // List of pools
+
+        //token registration when new pool is created
+        var tokens : [Token] = [];
+
+        // token balances
+        let balances : HashMap.HashMap<Principal, HashMap.HashMap<Text, Nat>> = HashMap.HashMap<Principal, HashMap.HashMap<Text, Nat>>(0, Principal.equal, Principal.hash);
+
+        // Function to create a new challenge
+        var challengeId : Nat = 0;
 
         let members = HashMap.HashMap<Principal, Types.Member>(1, Principal.equal, Principal.hash);
 
         // Add Initial mentor for DAO
-        let initialAdmin : Types.Member = { 
-                                                name = "motoko_bootcamp"; 
-                                                role = #Admin; 
-                                           };
-        members.put( Principal.fromText("nkqop-siaaa-aaaaj-qa3qq-cai"), initialAdmin );
+        let initialAdmin : Types.Member = {
+                name = "motoko_bootcamp";
+               stakedAmount =2;
+        };
+        members.put(Principal.fromText("nkqop-siaaa-aaaaj-qa3qq-cai"), initialAdmin);
 
         var nextProposalId : ProposalId = 0;
-        let proposals = HashMap.HashMap<ProposalId, Proposal>(0, Nat.equal, Hash.hash );
-        
+        let proposals = HashMap.HashMap<ProposalId, Proposal>(0, Nat.equal, Hash.hash);
+
+        /*
         let tokenCanister = actor("jaamb-mqaaa-aaaaj-qa3ka-cai") : actor { // actor("jaamb-mqaaa-aaaaj-qa3ka-cai") : actor {
                 mint : shared (owner : Principal, amount : Nat) -> async Result<(), Text>;
                 burn : shared (owner : Principal, amount : Nat) -> async Result<(), Text>;
                 balanceOf : shared (owner : Principal) -> async Nat;
-        };
-
-        let webpageCanister = actor("6mce5-laaaa-aaaab-qacsq-cai") : actor {
-                setManifesto : shared (newManifesto : Text) -> async Result<(), Text>;
-        };
+        };*/
 
         // Returns the name of the DAO
         public shared query func getName() : async Text {
@@ -108,14 +94,66 @@ actor {
                         manifesto;
                         incentives = Buffer.toArray(incentives);
                         members = Iter.toArray(Iter.map<Member, Text>(members.vals(), func(member : Member) { member.name }));
-                        logo;
                         numberOfMembers = members.size();
                 });
         };
 
         // Returns the incentives of the DAO
-        public shared query func getIncentives() : async [Text] {
-                return Buffer.toArray<Text>(incentives);
+        public shared query func getIncentives() : async [Incentive] {
+                return Buffer.toArray<Incentive>(incentives);
+        };
+
+        public shared ({ caller }) func createChallenge(challengeArg : ChallengeArg) : async () {
+
+                //  Validate Input
+                assert (challengeArg.CreatorStakedAmount >= 1);
+                assert (challengeArg.incentiveTokenName != "");
+
+                //deposit the stake amount from the creator to the canister
+
+                // make the creator a member of the challenge
+                let newMember : Member = {
+                        name = challengeArg.CreatorName;
+                        stakedAmount = challengeArg.CreatorStakedAmount;
+                };
+                let _members = HashMap.HashMap<Principal, Member>(0, Principal.equal, Principal.hash);
+                _members.put(caller, newMember);
+                members.put(caller, newMember);
+                // create a new challenge
+                let newChallenge : Challenge = {
+                        id = challengeId;
+                        name = challengeArg.name;
+                        creator = newMember;
+                        description = challengeArg.description;
+                        memberStakeAmount = challengeArg.memberStakeAmount;
+                        members = _members;
+                        startDate = Time.now();
+                        endDate = Time.now() + 60 * 60 * 24 * 30 * 1_000_000_000; // 7 days from now
+                        totalStakedAmount = challengeArg.CreatorStakedAmount;
+                        incentiveTokenName = challengeArg.incentiveTokenName;
+                };
+                // add the challenge to the list
+                let buffer = Buffer.fromArray<Challenge>(challenges);
+                buffer.add(newChallenge);
+                challenges := Buffer.toArray<Challenge>(buffer);
+
+                // create a predefined list of incentives
+                incentives.add({ description = "#1 : Do 10 pushups and get 10 points"; rewardTokenName = "$Fitness"; rewardAmount = 10} );
+              
+                // create a new token
+                let newToken : Token = {
+                        name = challengeArg.incentiveTokenName;
+                        challengeId = challengeId;
+                };
+
+                // add the token to the token list
+                let _buffer = Buffer.fromArray<Token>(tokens);
+                _buffer.add(newToken);
+                tokens := Buffer.toArray<Token>(_buffer);
+
+                // increment the challenge id
+                challengeId += 1;
+
         };
 
         // Register a new member in the DAO with the given name and principal of the caller
@@ -123,94 +161,80 @@ actor {
         // New members are always Challenger
         // Returns an error if the member already exists
         public shared ({ caller }) func registerMember(member : Member) : async Result<(), Text> {
-                if(Principal.isAnonymous(caller)){
-                // We don't want to register the anonymous identity
+                if (Principal.isAnonymous(caller)) {
+                        // We don't want to register the anonymous identity
                         return #err("Cannot register member with the anonymous identity");
                 };
 
                 let optFoundMember : ?Member = members.get(caller);
-                switch(optFoundMember) {
-                // Check if n is null
-                case(null){
-                        members.put(caller, member);
-                        // TODO : mint 10 MBT for new member
-                        let mintResult = await tokenCanister.mint(caller, 10); 
+                switch (optFoundMember) {
+                        // Check if n is null
+                        case (null) {
+                                members.put(caller, member);
+                                // TODO : mint 10 MBT for new member
+                                //let mintResult = await tokenCanister.mint(caller, 10);
 
-                        // TODO : Get a deposit address for the new member and store it for future withdrawal
-                        return mintResult;
+                                // TODO : Get a deposit address for the new member and store it for future withdrawal
+                                //return mintResult;
+                                return #ok(()); 
+                        };
+                        case (?optFoundMember) {
+                                return #err("Member already exists");
+                        };
                 };
-                case(? optFoundMember){ return #err("Member already exists"); };
-                }
         };
 
-        
-        // Code to get AccountID from external ID
-        public shared(msg) func getDepositAddress(): async Blob {
-                Account.accountIdentifier(Principal.fromActor(this), Account.principalToSubaccount(msg.caller));
-        };
+        // Function to create a new pool
+        public shared ({ caller }) func createPool(poolName : Text, stake : Nat, stakeTokenName : Text, incentiveTokenName : Text) : async () {
+                // Implementation to create a new pool within a challenge
+                // Validate input
+                assert (stakeTokenName != "");
+                assert (incentiveTokenName != "");
 
-
-        // Code to get AccountID from external ID
-        public func getDepositAddress(caller : Principal): async Blob {
-                Account.accountIdentifier(Principal.fromActor(this), Account.principalToSubaccount(caller));
-        };
-
-        // Pool Address 
-        // Account.accountIdentifier(Principal.fromActor(this), Account.defaultSubaccount());
-
-
-        public shared(caller) func claimBounty(): async Blob {
-                // TODO : Verify member is registered and holds assets, then get his account_id
-                let account_id : Blob = getDepositAddress(caller)
-
-                // TODO : Calculate amount according to pool distribution result
-                let amount : Nat32 = 0;
-
-                withdrawIcp(caller, amount, account_id);
-        }
-
-        private func withdrawIcp(caller: Principal, amount: Nat, account_id: Blob) : async T.WithdrawReceipt {
-                Debug.print("Withdraw...");
-
-                // remove withdrawal amount from book
-                switch (book.removeTokens(caller, ledger, amount+icp_fee)){
-                    case(null){
-                        return #Err(#BalanceLow)
-                    };
-                    case _ {};
+                // check whether the caller is a member of the primary challenge
+                switch (members.get(caller)) {
+                        case (?member) {
+                                // make the creator a member of the pool
+                                let newMember : Member = {
+                                        name = member.name;
+                                        stakedAmount = stake;
+                                };
+                                let _members = HashMap.HashMap<Principal, Member>(0, Principal.equal, Principal.hash);
+                                _members.put(caller, newMember);
+                                // create a new pool
+                                let newPool : Pool = {
+                                        id = challengeId;
+                                        name = poolName;
+                                        creator = newMember;
+                                        stake = stake;
+                                        totalStaked = stake;
+                                        members = _members;
+                                        stakeTokenName = stakeTokenName;
+                                        incentiveTokenName = incentiveTokenName;
+                                };
+                                // add the pool to the list
+                                let buffer = Buffer.fromArray<Pool>(pools);
+                                buffer.add(newPool);
+                                pools := Buffer.toArray<Pool>(buffer);
+                        };
+                        case (null) {
+                                // Caller is not a member of the primary challenge
+                                return;
+                        };
                 };
 
-                // Transfer amount back to user
-                let icp_reciept =  await Ledger.transfer({
-                    memo: Nat64    = 0;
-                    from_subaccount = ?Account.defaultSubaccount();
-                    to = account_id;
-                    amount = { e8s = Nat64.fromNat(amount + icp_fee) };
-                    fee = { e8s = Nat64.fromNat(icp_fee) };
-                    created_at_time = ?{ timestamp_nanos = Nat64.fromNat(Int.abs(Time.now())) };
-                });
-
-                switch icp_reciept {
-                    case (#Err e) {
-                        // add tokens back to user account balance
-                        book.addTokens(caller,ledger,amount+icp_fee);
-                        return #Err(#TransferFailure);
-                    };
-                    case _ {};
-                };
-                #Ok(amount)
-    };
+        };
 
         // Get the member with the given principal
         // Returns an error if the member does not exist
         public query func getMember(p : Principal) : async Result<Member, Text> {
-                switch( members.get(p) ) {
+                switch (members.get(p)) {
                         // Check if n is null
-                        case(null){ return #err("Member not found"); };
-                        case(? optFoundMember){ return #ok(optFoundMember); };
-                }
-        };    
-        
+                        case (null) { return #err("Member not found") };
+                        case (?optFoundMember) { return #ok(optFoundMember) };
+                };
+        };
+
         // this function takes no parameters and returns the list of members of your DAO as an Array
         public query func getAllMembers() : async [Member] {
                 return Iter.toArray<(Member)>(members.vals());
@@ -221,90 +245,45 @@ actor {
                 return members.size();
         };
 
-        func _verifyMemberRole(principal : Principal, role : Role) : Result<Member, Text> {
-                switch( members.get(principal) ) {
-                        // Check if n is null
-                        case(null){ 
-                                Debug.print("member not found"); 
-                                return #err("Member not found");
-                        };
-                        case(? optFoundMember){
-                                if(optFoundMember.role != role) {
-                                        Debug.print("unauthorized member role"); 
-                                        return #err("unauthorized member role");
-                                };
-                                return #ok(optFoundMember); 
-                        };
-                }
-        };
-
-
-
-        // Graduate the student with the given principal
-        // Returns an error if the student does not exist or is not a student
-        // Returns an error if the caller is not a mentor
-        public shared ({ caller }) func stake(amount : Nat32) : async Result<(), Text> {
-            if ( !(status == #Open || status == #Running) ) { return #err("Challenge is over. Cannot stake anymore"); }    
-                
-            switch( members.get(caller) ) {
-            // Check if n is null
-            case(null){ return #err("Member not found"); };
-            case(? optFoundMember){
-                    // TODO : get sub account_id and transfer tokens to the BlackHole canister pool 
-
-                    if(optFoundMember.role == #Challenger) {
-                            let activeMember : Member = { 
-                                                            name = optFoundMember.name; 
-                                                            role = #AssetHolder; 
-                                                          };
-                            members.put(caller, activeMember );
-                    };
-                    return #ok();
-            };
-            }
-        };
-
         // Create a new proposal and returns its id
         // Returns an error if the caller is not a mentor or doesn't own at least 1 MBC token
-        public shared ({ caller }) func createProposal(content : ProposalContent) : async Result<ProposalId, Text> {
-                let resultVerifiedMember : Result<Member, Text> = _verifyMemberRole(caller, #Admin);
-                //assertOk( resultVerifiedMember );
-                if( Result.isErr(resultVerifiedMember) ) {
-                        return #err("The caller is not a Admin - cannot create a proposal");
-                };
-
-                switch( members.get(caller) ) {
-                case(null) { return #err("The caller does not have enough tokens to create a proposal"); };
-                case(? member) {
-                        //let balance = await tokenCanister.balanceOf(caller);
+        public shared ({ caller }) func createProposal(content : ProposalContent,id: ChallengeId) : async Result<ProposalId, Text> {
+                switch (members.get(caller)) {
+                        case (null) {
+                                return #err("The caller is not a member");
+                        };
+                        case (?member) {
+                                //let balance = await tokenCanister.balanceOf(caller);
+                                /* // TODO : We need to burn at least one token to avoid proposal spamming among challengers
                         if ( Result.isErr( await tokenCanister.burn(caller, 1) ) ) {
                                 return #err("The caller does not have enough tokens to create a proposal");
+                        };*/
+                                // Create the proposal and burn the tokens
+                                let proposal : Proposal = {
+                                        id = nextProposalId;
+                                        challengeId = id;
+                                        content;
+                                        creator = caller;
+                                        created = Time.now();
+                                        executed = null;
+                                        votes = [];
+                                        voteScore = 0;
+                                        status = #Open;
+                                };
+                                proposals.put(nextProposalId, proposal);
+                                nextProposalId += 1;
+
+                                return #ok(nextProposalId - 1);
                         };
-                        // Create the proposal and burn the tokens
-                        let proposal : Proposal = {
-                                id = nextProposalId;
-                                content;
-                                creator = caller;
-                                created = Time.now();
-                                executed = null;
-                                votes = [];
-                                voteScore = 0;
-                                status = #Open;
-                        };
-                        proposals.put(nextProposalId, proposal);
-                        nextProposalId += 1;
-                        
-                        return #ok(nextProposalId - 1);
-                };
                 };
         };
 
         // Get the proposal with the given id
         // Returns an error if the proposal does not exist
         public query func getProposal(id : ProposalId) : async Result<Proposal, Text> {
-                switch(proposals.get(id)) {
-                        case(null) { return #err("Proposal doesn't exist"); };
-                        case(? proposal) { return #ok(proposal); };
+                switch (proposals.get(id)) {
+                        case (null) { return #err("Proposal doesn't exist") };
+                        case (?proposal) { return #ok(proposal) };
                 };
         };
 
@@ -319,122 +298,98 @@ actor {
 
                 // Check if the caller is a member of the DAO
                 switch (members.get(caller)) {
-                case (null) {
-                        return #err("The caller is not a member - cannot vote one proposal");
-                };
-                case (?member) {
-                        if( member.role == #Challenger ) {
-                                return #err("The caller is unathorized - cannot vote one proposal");
-                        };
-                        
-                        // Check if the proposal exists
-                        switch (proposals.get(proposalId)) {
                         case (null) {
-                                return #err("The proposal does not exist");
+                                return #err("The caller is not a member - cannot vote one proposal");
                         };
-                        case (?proposal) {
-                                // Check if the proposal is open for voting
-                                if (proposal.status != #Open) {
-                                return #err("The proposal is not open for voting");
-                                };
-                                // Check if the caller has already voted
-                                if (_hasVoted(proposal, caller)) {
-                                return #err("The caller has already voted on this proposal");
-                                };
-                                let balance = await tokenCanister.balanceOf(caller);
-                                let multiplierVote = switch (vote.yesOrNo) {
-                                        case (true) { 1 };
-                                        case (false) { -1 };
-                                };
-                                let multiplierRole = switch (member.role) {
-                                        case (#AssetHolder) { 1 };
-                                        case (#Admin) { 5 };
-                                        case (#Challenger) { 0 };
-                                };
-                                let votingPower = balance * multiplierVote * multiplierRole;
-                                let newVoteScore = proposal.voteScore + votingPower;
-                                var newExecuted : ?Time.Time = null;
-                                let newVote : Vote = {
+                        case (?member) {
+                                // Check if the proposal exists
+                                switch (proposals.get(proposalId)) {
+                                        case (null) {
+                                                return #err("The proposal does not exist");
+                                        };
+                                        case (?proposal) {
+                                                // Check if the proposal is open for voting
+                                                if (proposal.status != #Open) {
+                                                        return #err("The proposal is not open for voting");
+                                                };
+                                                // Check if the caller has already voted
+                                                if (_hasVoted(proposal, caller)) {
+                                                        return #err("The caller has already voted on this proposal");
+                                                };
+                                                let balance = 1; // await tokenCanister.balanceOf(caller); // TODO : Consider user's token balance as part of voting power?
+                                                let multiplierVote = switch (vote.yesOrNo) {
+                                                        case (true) { 1 };
+                                                        case (false) { -1 };
+                                                };
+                                                let multiplierRole = 1;
+                                                let votingPower = balance * multiplierVote * multiplierRole;
+                                                let newVoteScore = proposal.voteScore + votingPower;
+                                                var newExecuted : ?Time.Time = null;
+                                                let newVote : Vote = {
                                                         member = caller;
                                                         votingPower = Int.abs(votingPower);
                                                         yesOrNo = vote.yesOrNo;
                                                 };
-                                var newVotes : Buffer.Buffer<Vote> = Buffer.fromArray<Vote>(proposal.votes);//.append( Buffer.fromArray<Vote>([newVote]) );
-                                newVotes.add(newVote);
+                                                var newVotes : Buffer.Buffer<Vote> = Buffer.fromArray<Vote>(proposal.votes); //.append( Buffer.fromArray<Vote>([newVote]) );
+                                                newVotes.add(newVote);
 
-                                let newStatus = if (newVoteScore >= 100) {
-                                        #Accepted;
-                                } else if (newVoteScore <= -100) {
-                                        #Rejected;
-                                } else {
-                                        #Open;
-                                };
-                                switch (newStatus) {
-                                        case (#Accepted) {
-                                                let resultExec : Result<(), Text> = await _executeProposal(proposal.content);
-                                                if( Result.isErr( resultExec ) ) {
-                                                        return resultExec;
+                                                let newStatus = if (newVoteScore >= 100) {
+                                                        #Accepted;
+                                                } else if (newVoteScore <= -100) {
+                                                        #Rejected;
+                                                } else {
+                                                        #Open;
                                                 };
-                                                newExecuted := ?Time.now();
+                                                switch (newStatus) {
+                                                        case (#Accepted) {
+                                                                let resultExec : Result<(), Text> = await _executeProposal(proposal.content);
+                                                                if (Result.isErr(resultExec)) {
+                                                                        return resultExec;
+                                                                };
+                                                                newExecuted := ?Time.now();
+                                                        };
+                                                        case (_) {
+                                                                return #ok();
+                                                        };
+                                                };
+
+                                                let newProposal : Proposal = {
+                                                        id = proposal.id;
+                                                        challengeId = proposal.challengeId;
+                                                        content = proposal.content;
+                                                        creator = proposal.creator;
+                                                        created = proposal.created;
+                                                        executed = newExecuted;
+                                                        votes = Buffer.toArray(newVotes);
+                                                        voteScore = newVoteScore;
+                                                        status = newStatus;
+                                                };
+                                                proposals.put(proposal.id, newProposal);
+                                                return #ok();
                                         };
-                                        case (_) { return #ok(); };
                                 };
-                                
-                                let newProposal : Proposal = {
-                                        id = proposal.id;
-                                        content = proposal.content;
-                                        creator = proposal.creator;
-                                        created = proposal.created;
-                                        executed = newExecuted;
-                                        votes = Buffer.toArray(newVotes);
-                                        voteScore = newVoteScore;
-                                        status = newStatus;
-                                };
-                                proposals.put(proposal.id, newProposal);
-                                return #ok();
                         };
-                        };
-                };
                 };
         };
 
         func _hasVoted(proposal : Proposal, member : Principal) : Bool {
                 return Array.find<Vote>(
-                proposal.votes,
-                func(vote : Vote) {
-                        return vote.member == member;
-                },
+                        proposal.votes,
+                        func(vote : Vote) {
+                                return vote.member == member;
+                        },
                 ) != null;
         };
 
         func _executeProposal(content : ProposalContent) : async Result<(), Text> {
                 switch (content) {
-                case (#ChangeManifesto(newManifesto)) {
-                        manifesto := newManifesto;
-                        return await webpageCanister.setManifesto(newManifesto);
-                        //return #ok();
-                };
-                case (#AddIncentive(newIncentive)) {
-                        incentives.add(newIncentive);
-                        return #ok();
-                };
-                case (#AddAdmin(principal)) {
-                        switch( members.get(principal) ) {
-                        // Check if n is null
-                        case(null){ return #err("Admin member not found - cannot execute proposal"); };
-                        case(? optFoundMember){
-                                if(optFoundMember.role == #AssetHolder) {
-                                        let mentorMember : Member = { 
-                                                                        name = optFoundMember.name; 
-                                                                        role = #Admin; 
-                                                                    };
-                                        members.put(principal, mentorMember );
-                                        return #ok();
-                                };
-                                return #err("Member is not graduate or already has mentor role - cannot execute proposal");
+                        case (#AddIncentive(newIncentive)) {
+                                // incentives.add(newIncentive);
+                                return #ok();
                         };
-                        }
-                };
+                        case (_) {
+                               return #ok();
+                        };
                 };
         };
 
