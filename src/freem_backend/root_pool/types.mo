@@ -68,7 +68,6 @@ public type Pool = {
         manifesto : Text;
         incentives : [Incentive];
         members : [Text];
-        logo : Text;
         numberOfMembers : Nat;
     };
 
@@ -82,7 +81,6 @@ public type Pool = {
     public type ProposalId = Nat;
 
     public type ProposalContent = {
-        #ChangeManifesto : Text; // Change the challenge manifesto to the provided text
         #AddIncentive : Incentive;
         #AddAdmin : Principal; // Upgrade the member to a mentor with the provided principal
     };

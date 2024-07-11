@@ -2,41 +2,16 @@ import Result "mo:base/Result";
 import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import Nat "mo:base/Nat";
-import Nat64 "mo:base/Nat64";
 import Bool "mo:base/Bool";
 import Text "mo:base/Text";
 import Buffer "mo:base/Buffer";
 import Iter "mo:base/Iter";
-import Debug "mo:base/Debug";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Int "mo:base/Int";
 import Hash "mo:base/Hash";
-import Result "mo:base/Result";
 
 import Types "./types";
-//import tokenCanister "canister:promise_token";
-//import webpageCanister "canister:promise_webpage";
-
-import { now } = "mo:base/Time";
-import { setTimer; recurringTimer } = "mo:base/Timer";
-
-/*
-actor Reminder {
-
-  let solarYearSeconds = 356_925_216;
-
-  private func remind() : async () {
-    status = #Ended
-    print("End of the challenge!");
-  };
-
-  ignore setTimer<system>(#seconds (solarYearSeconds - abs(now() / 1_000_000_000) % solarYearSeconds),
-    func () : async () {
-      ignore recurringTimer<system>(#seconds solarYearSeconds, remind);
-      await remind();
-  });
-}*/
 
 actor {
 
@@ -56,23 +31,14 @@ actor {
         type Challenge = Types.Challenge;
         type Pool = Types.Pool;
         type ChallengeArg = Types.ChallengeArg;
-        type Result<A, B> = Result.Result<A, B>;
 
         // The principal of the Webpage canister associated with this DAO canister (needs to be updated with the ID of your Webpage canister)
         stable let canisterIdWebpage : Principal = Principal.fromText("u72sn-7aaaa-aaaab-qadkq-cai");
 
         stable var manifesto : Text = "This is the incentive pool for people taking on pushup challenges";
         stable let name = "Promise";
-        stable let status : PromiseStatus = #Open;
 
-        var incentives : Buffer.Buffer<Text> = Buffer.Buffer<Text>(2);
-        incentives.add("#1 : Do 10 pushups and get 10 points");
-        incentives.add("#2 : Do 30 pushups in a row and get 50 points");
-        incentives.add("#3 : DO 15 pushups on one hand and get 60 points");
-        incentives.add("#4 : Do 100 pushups within 3min and get 80 points");
-
-        let logo : Text = "";
-
+        var incentives : Buffer.Buffer<Incentive> = Buffer.Buffer<Incentive>(2);
         // List of challenges
         var challenges : [Challenge] = [];
 
@@ -84,9 +50,6 @@ actor {
         // token balances
         let balances : HashMap.HashMap<Principal, HashMap.HashMap<Text, Nat>> = HashMap.HashMap<Principal, HashMap.HashMap<Text, Nat>>(0, Principal.equal, Principal.hash);
 
-        //Incentive addition
-        let Incentives : HashMap.HashMap<Text, [Incentive]> = HashMap.HashMap<Text, [Incentive]>(0, Text.equal, Text.hash);
-
         // Function to create a new challenge
         var challengeId : Nat = 0;
 
@@ -95,7 +58,7 @@ actor {
         // Add Initial mentor for DAO
         let initialAdmin : Types.Member = {
                 name = "motoko_bootcamp";
-                role = #Admin;
+               stakedAmount =2;
         };
         members.put(Principal.fromText("nkqop-siaaa-aaaaj-qa3qq-cai"), initialAdmin);
 
@@ -131,7 +94,6 @@ actor {
                         manifesto;
                         incentives = Buffer.toArray(incentives);
                         members = Iter.toArray(Iter.map<Member, Text>(members.vals(), func(member : Member) { member.name }));
-                        logo;
                         numberOfMembers = members.size();
                 });
         };
@@ -156,7 +118,7 @@ actor {
                 };
                 let _members = HashMap.HashMap<Principal, Member>(0, Principal.equal, Principal.hash);
                 _members.put(caller, newMember);
-                primaryPoolMembers.put(caller, newMember);
+                members.put(caller, newMember);
                 // create a new challenge
                 let newChallenge : Challenge = {
                         id = challengeId;
@@ -176,11 +138,8 @@ actor {
                 challenges := Buffer.toArray<Challenge>(buffer);
 
                 // create a predefined list of incentives
-                let incentives : [Incentive] = [
-                        { description = "First 50 Push Ups"; rewardAmount = 40 },
-                ];
-                Incentives.put(challengeArg.incentiveTokenName, incentives);
-
+                incentives.add({ description = "#1 : Do 10 pushups and get 10 points"; rewardTokenName = "$Fitness"; rewardAmount = 10} );
+              
                 // create a new token
                 let newToken : Token = {
                         name = challengeArg.incentiveTokenName;
@@ -217,7 +176,7 @@ actor {
 
                                 // TODO : Get a deposit address for the new member and store it for future withdrawal
                                 //return mintResult;
-                                return Ok();
+                                return #ok(()); 
                         };
                         case (?optFoundMember) {
                                 return #err("Member already exists");
@@ -288,7 +247,7 @@ actor {
 
         // Create a new proposal and returns its id
         // Returns an error if the caller is not a mentor or doesn't own at least 1 MBC token
-        public shared ({ caller }) func createProposal(content : ProposalContent) : async Result<ProposalId, Text> {
+        public shared ({ caller }) func createProposal(content : ProposalContent,id: ChallengeId) : async Result<ProposalId, Text> {
                 switch (members.get(caller)) {
                         case (null) {
                                 return #err("The caller is not a member");
@@ -302,6 +261,7 @@ actor {
                                 // Create the proposal and burn the tokens
                                 let proposal : Proposal = {
                                         id = nextProposalId;
+                                        challengeId = id;
                                         content;
                                         creator = caller;
                                         created = Time.now();
@@ -342,10 +302,6 @@ actor {
                                 return #err("The caller is not a member - cannot vote one proposal");
                         };
                         case (?member) {
-                                if (member.role == #Challenger) {
-                                        return #err("The caller is unathorized - cannot vote one proposal");
-                                };
-
                                 // Check if the proposal exists
                                 switch (proposals.get(proposalId)) {
                                         case (null) {
@@ -365,13 +321,7 @@ actor {
                                                         case (true) { 1 };
                                                         case (false) { -1 };
                                                 };
-                                                let multiplierRole = switch (member.role) {
-                                                        case (#AssetHolder) {
-                                                                1;
-                                                        };
-                                                        case (#Admin) { 5 };
-                                                        case (#Challenger) { 0 };
-                                                };
+                                                let multiplierRole = 1;
                                                 let votingPower = balance * multiplierVote * multiplierRole;
                                                 let newVoteScore = proposal.voteScore + votingPower;
                                                 var newExecuted : ?Time.Time = null;
@@ -405,6 +355,7 @@ actor {
 
                                                 let newProposal : Proposal = {
                                                         id = proposal.id;
+                                                        challengeId = proposal.challengeId;
                                                         content = proposal.content;
                                                         creator = proposal.creator;
                                                         created = proposal.created;
@@ -432,33 +383,12 @@ actor {
 
         func _executeProposal(content : ProposalContent) : async Result<(), Text> {
                 switch (content) {
-                        case (#ChangeManifesto(newManifesto)) {
-                                manifesto := newManifesto;
-                                return await webpageCanister.setManifesto(newManifesto);
-                                //return #ok();
-                        };
                         case (#AddIncentive(newIncentive)) {
-                                incentives.add(newIncentive);
+                                // incentives.add(newIncentive);
                                 return #ok();
                         };
-                        case (#AddAdmin(principal)) {
-                                switch (members.get(principal)) {
-                                        // Check if n is null
-                                        case (null) {
-                                                return #err("Admin member not found - cannot execute proposal");
-                                        };
-                                        case (?optFoundMember) {
-                                                if (optFoundMember.role == #AssetHolder) {
-                                                        let mentorMember : Member = {
-                                                                name = optFoundMember.name;
-                                                                role = #Admin;
-                                                        };
-                                                        members.put(principal, mentorMember);
-                                                        return #ok();
-                                                };
-                                                return #err("Member is not graduate or already has mentor role - cannot execute proposal");
-                                        };
-                                };
+                        case (_) {
+                               return #ok();
                         };
                 };
         };
